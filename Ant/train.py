@@ -50,7 +50,7 @@ class PPO:
         action_dist = torch.distributions.Normal(mean, std)
         action = action_dist.sample()
         log_prob = action_dist.log_prob(action)
-        log_prob = torch.prod(log_prob, dim = 1)
+        log_prob = torch.sum(log_prob, dim = 1) # 这个动作的概率
         return action, log_prob
 
     def gae(self, td_delta):
@@ -77,10 +77,10 @@ class PPO:
 
         for _ in range(self.epochs):
             means, stds = self.actor(states)
-            print(means, means.size())
+            # print(means, means.size()) # means会出现nan
             action_dists = torch.distributions.Normal(means, stds)
             log_probs = action_dists.log_prob(actions)
-            log_probs = torch.prod(log_probs, dim = 1, keepdim = True)
+            log_probs = torch.sum(log_probs, dim = 1, keepdim = True)
             ratio = torch.exp(log_probs - old_log_probs)
             surr1 = ratio * advantage
             surr2 = torch.clamp(ratio, 1-self.eps, 1+self.eps) * advantage
@@ -116,7 +116,7 @@ def train():
 
     env_name = "Ant-v4"
     env = gym.make(env_name, render_mode="human")
-    env = gym.wrappers.TimeLimit(env, max_episode_steps = 100)
+    env = gym.wrappers.TimeLimit(env, max_episode_steps = 200) # 限制最大轮数
     torch.manual_seed(0)
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
@@ -135,7 +135,7 @@ def train():
                     env.render()
                     action, log_prob = agent.take_action(state)
                     action = F.tanh(action.reshape(-1))
-                    next_state, reward, done, truncated, info = env.step(action.cpu().detach().numpy())
+                    next_state, reward, done, truncated, _ = env.step(action.cpu().detach().numpy())
                     done = done or truncated
                     transition_dict['states'].append(state)
                     transition_dict['actions'].append(action)
