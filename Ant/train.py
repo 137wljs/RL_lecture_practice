@@ -50,6 +50,7 @@ class PPO:
         action_dist = torch.distributions.Normal(mean, std)
         action = action_dist.sample()
         log_prob = action_dist.log_prob(action)
+        log_prob = torch.prod(log_prob, dim = 1)
         return action, log_prob
 
     def gae(self, td_delta):
@@ -76,11 +77,13 @@ class PPO:
 
         for _ in range(self.epochs):
             means, stds = self.actor(states)
+            print(means, means.size())
             action_dists = torch.distributions.Normal(means, stds)
             log_probs = action_dists.log_prob(actions)
-            ration = torch.exp(log_probs - old_log_probs)
-            surr1 = ration * advantage
-            surr2 = torch.clamp(ration, 1-self.eps, 1+self.eps) * advantage
+            log_probs = torch.prod(log_probs, dim = 1, keepdim = True)
+            ratio = torch.exp(log_probs - old_log_probs)
+            surr1 = ratio * advantage
+            surr2 = torch.clamp(ratio, 1-self.eps, 1+self.eps) * advantage
             actor_loss = torch.mean(-torch.min(surr1, surr2))
             critic_loss = torch.mean(F.mse_loss(self.critic(states), td_target.detach()))
             self.actor_optimizer.zero_grad()
@@ -113,7 +116,7 @@ def train():
 
     env_name = "Ant-v4"
     env = gym.make(env_name, render_mode="human")
-    env = gym.wrappers.TimeLimit(env, max_episode_steps = 10)
+    env = gym.wrappers.TimeLimit(env, max_episode_steps = 100)
     torch.manual_seed(0)
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
