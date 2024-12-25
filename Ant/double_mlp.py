@@ -104,7 +104,7 @@ def moving_average(a, window_size):
 
 
 def train():
-    actor_lr = 1e-3
+    actor_lr = 1e-4
     critic_lr = 1e-2
     num_episodes = 500
     hidden_dim = 128
