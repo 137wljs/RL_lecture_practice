@@ -78,7 +78,6 @@ class PPO:
 
         for _ in range(self.epochs):
             means, stds = self.actor(states)
-            # print(means, means.size()) # means会出现nan
             action_dists = torch.distributions.Normal(means, stds)
             log_probs = action_dists.log_prob(actions)
             log_probs = torch.sum(log_probs, dim = 1, keepdim = True)

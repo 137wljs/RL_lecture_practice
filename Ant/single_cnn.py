@@ -74,7 +74,6 @@ class PPO:
         action = action_dist.sample()
         log_prob = action_dist.log_prob(action)
         log_prob = torch.sum(log_prob) # 这个动作的概率
-        print('taking action')
         return action, log_prob
 
     def gae(self, td_delta):
