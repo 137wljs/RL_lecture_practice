@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
+algorithm_name = "single_mlp_PPO"
 
 class SingleNet(nn.Module):
     def __init__(self, state_dim, hidden_dim, action_dim):
@@ -92,13 +93,14 @@ def train():
     num_episodes = 500
     hidden_dim = 128
     gamma = 0.98
-    lmbda = 0.95
+    lmbda = 0.8
     epochs = 10
-    eps = 0.2
+    eps = 0.1
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     env_name = "Ant-v4"
-    env = gym.make(env_name, render_mode="human")
+    # env = gym.make(env_name, render_mode="human")
+    env = gym.make(env_name)
     env = gym.wrappers.TimeLimit(env, max_episode_steps = 200) # 限制最大轮数
     torch.manual_seed(0)
     state_dim = env.observation_space.shape[0]
@@ -115,7 +117,7 @@ def train():
                 state, _ = env.reset()
                 done, truncated = False, False
                 while not done and not truncated:
-                    env.render()
+                    # env.render()
                     action, log_prob = agent.take_action(state)
                     action = F.tanh(action.reshape(-1))
                     next_state, reward, done, truncated, _ = env.step(action.cpu().detach().numpy())
@@ -136,12 +138,14 @@ def train():
                 pbar.update(1)
 
 
-    # episodes_list = list(range(len(return_list)))
-    # plt.plot(episodes_list, return_list)
-    # plt.xlabel('Episodes')
-    # plt.ylabel('Returns')
-    # plt.title(f'PPO on {env_name}')
-    # plt.savefig('ppo_training_results.png')
+    episodes_list = list(range(len(return_list)))
+    with open(f"{algorithm_name}.txt", "w") as file:
+        file.write(str(return_list))
+    plt.plot(episodes_list, return_list)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title(f'{algorithm_name} on {env_name}')
+    plt.savefig(f'{algorithm_name}_training_results.png')
 
 if __name__ == '__main__':
     train()
