@@ -5,9 +5,17 @@ import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import pickle
 
-algorithm_name = "basic_PPO"
+algorithm_name = "basic_PPO_without_GAE"
 
+global_transition_dict = {
+    'states': [],
+    'actions': [],
+    'next_states': [],
+    'rewards': [],
+    'dones': []
+}
 class PolicyNet(nn.Module):
     def __init__(self, state_dim, hidden_dim, action_dim):
         super().__init__()
@@ -93,29 +101,20 @@ class PPO:
             self.actor_optimizer.step()
             self.critic_optimizer.step()
 
-
-def moving_average(a, window_size):
-    cumulative_sum = np.cumsum(np.insert(a, 0, 0))
-    middle = (cumulative_sum[window_size:] - cumulative_sum[:-window_size]) / window_size
-    r = np.arange(1, window_size-1, 2)
-    begin = np.cumsum(a[:window_size-1])[::2] / r
-    end = (np.cumsum(a[:-window_size:-1])[::2] / r)[::-1]
-    return np.concatenate((begin, middle, end))
-
-
 def train():
     actor_lr = 1e-4
     critic_lr = 1e-2
     num_episodes = 500
     hidden_dim = 128
     gamma = 0.98
-    lmbda = 0.5
+    lmbda = 0
     epochs = 10
     eps = 0.2
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     env_name = "Ant-v4"
-    env = gym.make(env_name, render_mode="human")
+    # env = gym.make(env_name, healthy_reward=0.3, render_mode='human')
+    env = gym.make(env_name)
     env = gym.wrappers.TimeLimit(env, max_episode_steps = 200) # 限制最大轮数
     torch.manual_seed(0)
     state_dim = env.observation_space.shape[0]
@@ -145,12 +144,20 @@ def train():
                     transition_dict['dones'].append(done)
                     state = next_state
                     episode_return += reward
+                    
+                for key in global_transition_dict:
+                    global_transition_dict[key].extend(transition_dict[key])
+                        
                 return_list.append(episode_return)
                 agent.update(transition_dict)
                 if (i_episode + 1) % 10 == 0:
                     pbar.set_postfix({'episode': '%d' % (num_episodes / 10 * i + i_episode + 1),
                                       'return': '%.3f' % np.mean(return_list[-10:])})
                 pbar.update(1)
+
+    # with open(f"{algorithm_name}_transition_data.pkl", "wb") as f:
+    #     pickle.dump(global_transition_dict, f)
+    # print(f"Transition data saved to {algorithm_name}_transition_data.pkl")
 
     episodes_list = list(range(len(return_list)))
     with open(f"{algorithm_name}.txt", "w") as file:

@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
+algorithm_name = "cnn_PPO"
 
 class CNNNet(nn.Module):
     def __init__(self, action_dim):
@@ -125,10 +126,10 @@ def moving_average(a, window_size):
 
 
 def train():
-    lr = 1e-5
+    lr = 2e-6
     num_episodes = 500
     gamma = 0.98
-    lmbda = 0.95
+    lmbda = 0.5
     epochs = 10
     eps = 0.2
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -176,13 +177,14 @@ def train():
                                       'return': '%.3f' % np.mean(return_list[-10:])})
                 pbar.update(1)
 
-
-    # episodes_list = list(range(len(return_list)))
-    # plt.plot(episodes_list, return_list)
-    # plt.xlabel('Episodes')
-    # plt.ylabel('Returns')
-    # plt.title(f'PPO on {env_name}')
-    # plt.savefig('ppo_training_results.png')
+    episodes_list = list(range(len(return_list)))
+    with open(f"{algorithm_name}.txt", "w") as file:
+        file.write(str(return_list))
+    plt.plot(episodes_list, return_list)
+    plt.xlabel('Episodes')
+    plt.ylabel('Returns')
+    plt.title(f'{algorithm_name} on {env_name}')
+    plt.savefig(f'{algorithm_name}_training_results.png')
 
 if __name__ == '__main__':
     train()

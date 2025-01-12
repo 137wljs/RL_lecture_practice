@@ -7,78 +7,9 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 import collections
 import random
+import pickle
 
-algorithm_name = "DDPG"
-
-class ReplayBuffer:
-    def __init__(self, capacity):
-        self.buffer = collections.deque(maxlen=capacity) 
-
-    def add(self, state, action, reward, next_state, done): 
-        self.buffer.append((state, action, reward, next_state, done)) 
-
-    def sample(self, batch_size): 
-        transitions = random.sample(self.buffer, batch_size)
-        state, action, reward, next_state, done = zip(*transitions)
-        return np.array(state), action, reward, np.array(next_state), done 
-
-    def size(self): 
-        return len(self.buffer)
-
-# def train_off_policy_agent(env, agent, num_episodes, replay_buffer, minimal_size, batch_size):
-#     return_list = []
-#     for i in range(10):
-#         with tqdm(total=int(num_episodes/10), desc='Iteration %d' % i) as pbar:
-#             for i_episode in range(int(num_episodes/10)):
-#                 episode_return = 0
-#                 state, _ = env.reset()
-#                 done, truncated = False, False
-#                 while not done and not truncated:   
-#                     action = agent.take_action(state)
-#                     action = F.tanh(action.reshape(-1))
-#                     next_state, reward, done, truncated, _ = env.step(action.cpu().detach().numpy())
-#                     replay_buffer.add(state, action, reward, next_state, done or truncated)
-#                     state = next_state
-#                     episode_return += reward
-#                     if replay_buffer.size() > minimal_size:
-#                         b_s, b_a, b_r, b_ns, b_d = replay_buffer.sample(batch_size)
-#                         transition_dict = {'states': b_s, 'actions': b_a, 'next_states': b_ns, 'rewards': b_r, 'dones': b_d}
-#                         agent.update(transition_dict)
-#                 return_list.append(episode_return)
-#                 if (i_episode+1) % 10 == 0:
-#                     pbar.set_postfix({'episode': '%d' % (num_episodes/10 * i + i_episode+1), 'return': '%.3f' % np.mean(return_list[-10:])})
-#                 pbar.update(1)
-#     return return_list
-
-def train_off_policy_agent(env, agent, num_episodes, replay_buffer, minimal_size, batch_size):
-    return_list = []
-    for i in range(10):
-        with tqdm(total=int(num_episodes/10), desc='Iteration %d' % i) as pbar:
-            for i_episode in range(int(num_episodes/10)):
-                episode_return = 0
-                state, _ = env.reset()
-                done = False
-                while not done:
-                    action = agent.take_action(state)
-                    action = F.tanh(action.reshape(-1))
-                    # distinguish whether action is nan
-                    if np.isnan(action.cpu().detach().numpy()).any():
-                        print("nan action detected")
-                    next_state, reward, done, truncated , _ = env.step(action.cpu().detach().numpy())
-                    done = truncated or done
-                    replay_buffer.add(state, action.detach(), reward, next_state, done)
-                    state = next_state
-                    episode_return += reward
-                    if replay_buffer.size() > minimal_size:
-                        b_s, b_a, b_r, b_ns, b_d = replay_buffer.sample(batch_size)
-                        transition_dict = {'states': b_s, 'actions': b_a, 'next_states': b_ns, 'rewards': b_r, 'dones': b_d}
-                        agent.update(transition_dict)
-                return_list.append(episode_return)
-                if (i_episode+1) % 10 == 0:
-                    pbar.set_postfix({'episode': '%d' % (num_episodes/10 * i + i_episode+1), 'return': '%.3f' % np.mean(return_list[-10:])})
-                pbar.update(1)
-    return return_list
-
+algorithm_name = "DDPG_using_PPO_data"
 
 class PolicyNet(nn.Module):
     def __init__(self, state_dim, hidden_dim, action_dim):
@@ -89,7 +20,6 @@ class PolicyNet(nn.Module):
     def forward(self, x):
         mu = F.relu(self.fc1_mu(x))
         return self.fc2_mu(mu)
-
 
 class QValueNet(torch.nn.Module):
     def __init__(self, state_dim, hidden_dim, action_dim):
@@ -103,7 +33,6 @@ class QValueNet(torch.nn.Module):
         x = F.relu(self.fc1(cat))
         x = F.relu(self.fc2(x))
         return self.fc_out(x)
-
 
 class DDPG:
     def __init__(self, state_dim, hidden_dim, action_dim, actor_lr, critic_lr, gamma, sigma, tau, device):
@@ -155,30 +84,58 @@ class DDPG:
         self.soft_update(self.critic, self.target_critic)
 
 def train():
-    actor_lr = 1e-6
+    actor_lr = 5e-7
     critic_lr = 1e-3
-    buffer_size = 10000
-    minimal_size = 1000
-    num_episodes = 500
+    num_episodes = 50
     hidden_dim = 128
-    batch_size = 32
+    batch_size = 16
     gamma = 0.98
-    sigma = 0.2
-    tau = 0.005
+    sigma = 0.1
+    tau = 0.05
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     env_name = "Ant-v4"
-    # env = gym.make(env_name, render_mode="human")
-    env = gym.make(env_name)
+    env = gym.make(env_name, healthy_reward=0.3, render_mode='human')
     env = gym.wrappers.TimeLimit(env, max_episode_steps = 200) # 限制最大轮数
     torch.manual_seed(0)
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
-    replay_buffer = ReplayBuffer(buffer_size)
     print(f'State dim: {state_dim}, Action dim: {action_dim}')
     agent = DDPG(state_dim, hidden_dim, action_dim, actor_lr, critic_lr, gamma, sigma, tau, device)
-
-    return_list = train_off_policy_agent(env, agent, num_episodes, replay_buffer, minimal_size, batch_size)
+    return_list = []
+    with open("basic_PPO_transition_data.pkl", 'rb') as f:
+        transition_data = pickle.load(f)
+    print("Transition data loaded")
+    for i in range(10000):
+        indices = random.sample(range(len(transition_data['states'])), batch_size)
+        sampled_states = [transition_data['states'][i] for i in indices]
+        sampled_actions = [transition_data['actions'][i] for i in indices]
+        sampled_next_states = [transition_data['next_states'][i] for i in indices]
+        sampled_rewards = [transition_data['rewards'][i] for i in indices]
+        sampled_dones = [transition_data['dones'][i] for i in indices]
+        sampled_transition_dist = {'states': sampled_states, 'actions': sampled_actions, 'next_states': sampled_next_states, 'rewards': sampled_rewards, 'dones': sampled_dones}
+        agent.update(sampled_transition_dist)
+    for i in range(1):
+        with tqdm(total=int(num_episodes), desc='Iteration %d' % i) as pbar:
+            for i_episode in range(int(num_episodes)):
+                episode_return = 0
+                state, _ = env.reset()
+                done = False
+                while not done:
+                    env.render()
+                    action = agent.take_action(state)
+                    action = F.tanh(action.reshape(-1))
+                    # distinguish whether action is nan
+                    if np.isnan(action.cpu().detach().numpy()).any():
+                        print("nan action detected")
+                    next_state, reward, done, truncated , _ = env.step(action.cpu().detach().numpy())
+                    done = truncated or done
+                    state = next_state
+                    episode_return += reward
+                return_list.append(episode_return)
+                if (i_episode+1) % 10 == 0:
+                    pbar.set_postfix({'episode': '%d' % (num_episodes/10 * i + i_episode+1), 'return': '%.3f' % np.mean(return_list[-10:])})
+                pbar.update(1)
     episodes_list = list(range(len(return_list)))
     with open(f"{algorithm_name}.txt", "w") as file:
         file.write(str(return_list))
